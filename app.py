@@ -163,7 +163,8 @@ def init_db():
                 (str(uuid.uuid4()), 'admin', generate_password_hash(admin_pw),
                  '플랫폼 관리자', STARTING_BALANCE, now_str()))
             if generated:
-                print(f'[init] admin 계정 생성 — 비밀번호: {admin_pw} (최초 1회만 출력)')
+                print(f'[init] admin 계정 생성 — 비밀번호: {admin_pw} (최초 1회만 출력)',
+                      flush=True)
         db.commit()
 
 
@@ -985,4 +986,7 @@ def handle_send_dm(data):
 if __name__ == '__main__':
     init_db()
     debug = os.environ.get('FLASK_DEBUG', '0') == '1'  # 기본값: debug 비활성화
-    socketio.run(app, host='127.0.0.1', port=5000, debug=debug)
+    # 개발/과제용 내장 서버. 실제 운영 배포 시에는 gunicorn+eventlet 등 WSGI 서버와
+    # HTTPS(리버스 프록시)를 사용해야 한다.
+    socketio.run(app, host='127.0.0.1', port=5000, debug=debug,
+                 allow_unsafe_werkzeug=True)

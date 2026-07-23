@@ -23,3 +23,6 @@ docs/
 
 # etc
 *.pptx
+
+# local claude config
+.claude/
