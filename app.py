@@ -694,6 +694,78 @@ def report():
                            target_id=request.args.get('target', ''))
 
 
+# ---------------------------------------------------------------------------
+# 지갑 / 송금
+# ---------------------------------------------------------------------------
+@app.route('/wallet')
+@login_required
+def wallet():
+    db = get_db()
+    history = db.execute(
+        'SELECT t.*, s.username AS sender_name, r.username AS receiver_name '
+        'FROM transfer t '
+        'JOIN user s ON s.id = t.sender_id '
+        'JOIN user r ON r.id = t.receiver_id '
+        'WHERE t.sender_id = ? OR t.receiver_id = ? '
+        'ORDER BY t.created_at DESC LIMIT 50',
+        (g.user['id'], g.user['id'])).fetchall()
+    return render_template('wallet.html', history=history,
+                           to_username=request.args.get('to', ''))
+
+
+@app.route('/transfer', methods=['POST'])
+@login_required
+@limiter.limit('30 per hour')
+def transfer():
+    username = (request.form.get('username') or '').strip()
+    try:
+        amount = int(str(request.form.get('amount', '')).strip())
+    except ValueError:
+        amount = 0
+    password = request.form.get('password') or ''
+
+    # 송금은 민감 작업이므로 비밀번호 재인증
+    if not check_password_hash(g.user['password_hash'], password):
+        flash('비밀번호가 올바르지 않습니다.')
+        return redirect(url_for('wallet'))
+    if amount <= 0 or amount > 100_000_000:
+        flash('송금 금액이 올바르지 않습니다.')
+        return redirect(url_for('wallet'))
+
+    db = get_db()
+    receiver = db.execute(
+        'SELECT id, is_dormant FROM user WHERE username = ?', (username,)).fetchone()
+    if receiver is None or receiver['is_dormant']:
+        flash('받는 사람을 찾을 수 없습니다.')
+        return redirect(url_for('wallet'))
+    if receiver['id'] == g.user['id']:
+        flash('자기 자신에게는 송금할 수 없습니다.')
+        return redirect(url_for('wallet'))
+
+    try:
+        # 잔액 검증을 UPDATE 조건에 포함해 원자적으로 처리(경쟁 조건 방지)
+        cur = db.execute(
+            'UPDATE user SET balance = balance - ? WHERE id = ? AND balance >= ?',
+            (amount, g.user['id'], amount))
+        if cur.rowcount == 0:
+            db.rollback()
+            flash('잔액이 부족합니다.')
+            return redirect(url_for('wallet'))
+        db.execute('UPDATE user SET balance = balance + ? WHERE id = ?',
+                   (amount, receiver['id']))
+        db.execute(
+            'INSERT INTO transfer (id, sender_id, receiver_id, amount, created_at) '
+            'VALUES (?, ?, ?, ?, ?)',
+            (str(uuid.uuid4()), g.user['id'], receiver['id'], amount, now_str()))
+        db.commit()
+    except sqlite3.Error:
+        db.rollback()
+        flash('송금 처리 중 오류가 발생했습니다.')
+        return redirect(url_for('wallet'))
+    flash(f'{username}님에게 {amount:,}P를 송금했습니다.')
+    return redirect(url_for('wallet'))
+
+
 # ===== FEATURE ROUTES INSERTED BELOW =====
 
 

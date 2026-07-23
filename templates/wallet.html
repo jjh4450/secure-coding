@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}지갑{% endblock %}
+{% block content %}
+  <h2>지갑</h2>
+  <p class="muted">보유 포인트: <strong style="font-size:20px">{{ '{:,}'.format(g.user['balance']) }}P</strong></p>
+
+  <h3>송금</h3>
+  <form method="post" action="{{ url_for('transfer') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="username">받는 사람 (사용자명)</label>
+    <input id="username" type="text" name="username" value="{{ to_username }}" required>
+    <label for="amount">금액 (P)</label>
+    <input id="amount" type="number" name="amount" min="1" max="100000000" required>
+    <label for="password">비밀번호 확인 <span class="muted">(본인 확인)</span></label>
+    <input id="password" type="password" name="password" autocomplete="current-password" required>
+    <button type="submit">송금하기</button>
+  </form>
+
+  <h3>거래 내역</h3>
+  {% if history %}
+    <table>
+      <thead>
+        <tr><th>일시</th><th>구분</th><th>상대</th><th>금액</th></tr>
+      </thead>
+      <tbody>
+        {% for t in history %}
+          <tr>
+            <td class="muted">{{ t['created_at'] }}</td>
+            {% if t['sender_name'] == g.user['username'] %}
+              <td style="color:var(--danger)">보냄</td>
+              <td>{{ t['receiver_name'] }}</td>
+              <td>-{{ '{:,}'.format(t['amount']) }}P</td>
+            {% else %}
+              <td style="color:var(--ok)">받음</td>
+              <td>{{ t['sender_name'] }}</td>
+              <td>+{{ '{:,}'.format(t['amount']) }}P</td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">거래 내역이 없습니다.</p>
+  {% endif %}
+{% endblock %}
