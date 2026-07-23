@@ -19,4 +19,18 @@
   {% else %}
     <p class="muted">{% if q %}검색 결과가 없습니다.{% else %}등록된 상품이 없습니다.{% endif %}</p>
   {% endif %}
+
+  <h3>전체 실시간 채팅</h3>
+  <div id="chat">
+    <div id="messages"></div>
+    <form id="chat_form" class="chat-form">
+      <input id="chat_input" type="text" maxlength="500" placeholder="메시지를 입력하세요" autocomplete="off">
+      <button type="submit">전송</button>
+    </form>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="{{ url_for('static', filename='js/global_chat.js') }}"></script>
 {% endblock %}

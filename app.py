@@ -572,7 +572,147 @@ def delete_product(product_id):
     return redirect(url_for('dashboard'))
 
 
+# ---------------------------------------------------------------------------
+# 1:1 채팅 (HTTP)
+# ---------------------------------------------------------------------------
+def dm_room_id(a, b):
+    """두 사용자 id를 정렬 조합해 결정적 방 id 생성(순서 무관)."""
+    return '|'.join(sorted([a, b]))
+
+
+@app.route('/chat')
+@login_required
+def chat_list():
+    db = get_db()
+    rooms = db.execute(
+        """
+        SELECT m.room_id,
+               MAX(m.created_at) AS last_at,
+               (SELECT content FROM message WHERE room_id = m.room_id
+                ORDER BY created_at DESC LIMIT 1) AS last_content,
+               CASE WHEN m.sender_id = ? THEN m.receiver_id ELSE m.sender_id END AS peer_id
+        FROM message m
+        WHERE m.sender_id = ? OR m.receiver_id = ?
+        GROUP BY m.room_id
+        ORDER BY last_at DESC
+        """,
+        (g.user['id'], g.user['id'], g.user['id'])).fetchall()
+    peers = {}
+    for r in rooms:
+        row = db.execute('SELECT username FROM user WHERE id = ?',
+                         (r['peer_id'],)).fetchone()
+        peers[r['peer_id']] = row['username'] if row else '(탈퇴한 사용자)'
+    return render_template('chat_list.html', rooms=rooms, peers=peers)
+
+
+@app.route('/chat/<peer_id>')
+@login_required
+def chat_room(peer_id):
+    db = get_db()
+    peer = db.execute('SELECT id, username FROM user WHERE id = ?',
+                      (peer_id,)).fetchone()
+    if peer is None or peer['id'] == g.user['id']:
+        abort(404)
+    room = dm_room_id(g.user['id'], peer_id)
+    messages = db.execute(
+        'SELECT m.*, u.username AS sender_name FROM message m '
+        'JOIN user u ON u.id = m.sender_id '
+        'WHERE m.room_id = ? ORDER BY m.created_at ASC LIMIT 200',
+        (room,)).fetchall()
+    return render_template('chat_room.html', peer=peer, messages=messages)
+
+
 # ===== FEATURE ROUTES INSERTED BELOW =====
+
+
+# ---------------------------------------------------------------------------
+# 실시간 채팅 (Socket.IO)
+# ---------------------------------------------------------------------------
+def socket_user():
+    """소켓 이벤트마다 세션 기반 인증 확인. 미인증/휴면이면 None."""
+    user_id = session.get('user_id')
+    if not user_id:
+        return None
+    user = get_db().execute('SELECT * FROM user WHERE id = ?', (user_id,)).fetchone()
+    if user is None or user['is_dormant']:
+        return None
+    return user
+
+
+def chat_rate_limited(user_id):
+    now = time.time()
+    if now - _last_chat_at.get(user_id, 0) < CHAT_MIN_INTERVAL:
+        return True
+    _last_chat_at[user_id] = now
+    return False
+
+
+@socketio.on('send_message')
+def handle_global_message(data):
+    user = socket_user()
+    if user is None:
+        return  # 미인증 연결의 메시지는 무시(브로드캐스트 안 함)
+    if chat_rate_limited(user['id']):
+        emit('chat_error', {'message': '메시지를 너무 빠르게 보내고 있습니다.'})
+        return
+    msg = (data or {}).get('message')
+    if not isinstance(msg, str):
+        return
+    msg = msg.strip()
+    if not msg or len(msg) > 500:
+        return
+    # username은 클라이언트 입력이 아니라 서버 세션에서 결정한다(위조 방지)
+    emit('message', {
+        'message_id': str(uuid.uuid4()),
+        'username': user['username'],
+        'message': msg,
+    }, broadcast=True)
+
+
+@socketio.on('join_dm')
+def handle_join_dm(data):
+    user = socket_user()
+    if user is None:
+        return
+    peer_id = (data or {}).get('peer_id')
+    if not isinstance(peer_id, str) or peer_id == user['id']:
+        return
+    if get_db().execute('SELECT 1 FROM user WHERE id = ?', (peer_id,)).fetchone() is None:
+        return
+    # 방 id는 두 당사자 id로만 결정되므로, 제3자는 남의 방에 접근할 수 없다
+    join_room(dm_room_id(user['id'], peer_id))
+
+
+@socketio.on('send_dm')
+def handle_send_dm(data):
+    user = socket_user()
+    if user is None:
+        return
+    if chat_rate_limited(user['id']):
+        emit('chat_error', {'message': '메시지를 너무 빠르게 보내고 있습니다.'})
+        return
+    peer_id = (data or {}).get('peer_id')
+    msg = (data or {}).get('message')
+    if not isinstance(peer_id, str) or not isinstance(msg, str):
+        return
+    msg = msg.strip()
+    if not msg or len(msg) > 500 or peer_id == user['id']:
+        return
+    db = get_db()
+    if db.execute('SELECT 1 FROM user WHERE id = ?', (peer_id,)).fetchone() is None:
+        return
+    room = dm_room_id(user['id'], peer_id)
+    created = now_str()
+    db.execute(
+        'INSERT INTO message (id, room_id, sender_id, receiver_id, content, created_at) '
+        'VALUES (?, ?, ?, ?, ?, ?)',
+        (str(uuid.uuid4()), room, user['id'], peer_id, msg, created))
+    db.commit()
+    emit('dm', {
+        'sender_name': user['username'],
+        'message': msg,
+        'created_at': created,
+    }, to=room)
 
 
 if __name__ == '__main__':

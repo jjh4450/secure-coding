@@ -12,6 +12,7 @@
     {% if g.user %}
       <a href="{{ url_for('dashboard') }}">상품</a>
       <a href="{{ url_for('new_product') }}">상품 등록</a>
+      <a href="{{ url_for('chat_list') }}">1:1 채팅</a>
       <a href="{{ url_for('profile') }}">마이페이지</a>
       {% block nav_authed %}{% endblock %}
       <span class="spacer"></span>
