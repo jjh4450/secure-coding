@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}{{ target['username'] }} 프로필{% endblock %}
+{% block content %}
+  <h2>
+    {{ target['username'] }}
+    {% if target['is_admin'] %}<span class="badge admin">관리자</span>{% endif %}
+    {% if target['is_dormant'] %}<span class="badge dormant">휴면</span>{% endif %}
+  </h2>
+  <p class="muted">{{ target['bio'] or '소개글이 없습니다.' }}</p>
+
+  {% if g.user['id'] != target['id'] %}
+    <div class="btn-row">
+      {% block user_actions %}{% endblock %}
+    </div>
+  {% endif %}
+
+  <h3>판매 중인 상품</h3>
+  {% if products %}
+    <ul class="product-list">
+      {% for product in products %}
+        <li>
+          <a href="{{ url_for('view_product', product_id=product['id']) }}">{{ product['title'] }}</a>
+          <span class="price">{{ '{:,}'.format(product['price']) }}P</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted">판매 중인 상품이 없습니다.</p>
+  {% endif %}
+{% endblock %}

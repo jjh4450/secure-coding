@@ -1,11 +1,47 @@
-{% extends "base.html" %}
-{% block title %}프로필{% endblock %}
+{% extends 'base.html' %}
+{% block title %}마이페이지{% endblock %}
 {% block content %}
-<h2>프로필 관리</h2>
-<p>사용자명: {{ user.username }}</p>
-<form method="post">
-  소개글: <br>
-  <textarea name="bio" rows="4" cols="50">{{ user.bio or '' }}</textarea><br>
-  <button type="submit">프로필 업데이트</button>
-</form>
+  <h2>마이페이지</h2>
+  <p class="muted">
+    사용자명: <strong>{{ user['username'] }}</strong>
+    {% if user['is_admin'] %}<span class="badge admin">관리자</span>{% endif %}
+    · 보유 포인트: <strong>{{ '{:,}'.format(user['balance']) }}P</strong>
+  </p>
+
+  <h3>소개글</h3>
+  <form method="post" action="{{ url_for('profile') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="bio">
+    <label for="bio">자기소개 <span class="muted">(500자 이내)</span></label>
+    <textarea id="bio" name="bio" maxlength="500">{{ user['bio'] }}</textarea>
+    <button type="submit">소개글 저장</button>
+  </form>
+
+  <h3>비밀번호 변경</h3>
+  <form method="post" action="{{ url_for('profile') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="password">
+    <label for="current_password">현재 비밀번호</label>
+    <input id="current_password" type="password" name="current_password" autocomplete="current-password" required>
+    <label for="new_password">새 비밀번호 <span class="muted">(8~72자, 영문+숫자)</span></label>
+    <input id="new_password" type="password" name="new_password" autocomplete="new-password" required>
+    <button type="submit">비밀번호 변경</button>
+  </form>
+
+  <h3>내가 등록한 상품</h3>
+  {% if my_products %}
+    <ul class="product-list">
+      {% for product in my_products %}
+        <li>
+          <a href="{{ url_for('view_product', product_id=product['id']) }}">{{ product['title'] }}</a>
+          <span>
+            <span class="price">{{ '{:,}'.format(product['price']) }}P</span>
+            {% if product['is_blocked'] %}<span class="badge blocked">차단됨</span>{% endif %}
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted">등록한 상품이 없습니다.</p>
+  {% endif %}
 {% endblock %}

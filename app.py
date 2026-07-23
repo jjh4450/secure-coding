@@ -391,6 +391,58 @@ def dashboard():
     return render_template('dashboard.html', products=products, q=q)
 
 
+# ---------------------------------------------------------------------------
+# 프로필 / 마이페이지 / 타 유저 조회
+# ---------------------------------------------------------------------------
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    db = get_db()
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'bio':
+            bio = (request.form.get('bio') or '').strip()
+            if len(bio) > 500:
+                flash('소개글은 500자 이내로 작성해주세요.')
+                return redirect(url_for('profile'))
+            db.execute('UPDATE user SET bio = ? WHERE id = ?', (bio, g.user['id']))
+            db.commit()
+            flash('소개글이 업데이트되었습니다.')
+        elif action == 'password':
+            current = request.form.get('current_password') or ''
+            new = request.form.get('new_password') or ''
+            # 민감 작업(비밀번호 변경)은 현재 비밀번호로 재인증
+            if not check_password_hash(g.user['password_hash'], current):
+                flash('현재 비밀번호가 올바르지 않습니다.')
+                return redirect(url_for('profile'))
+            if not valid_password(new):
+                flash('새 비밀번호는 8~72자이며 영문과 숫자를 모두 포함해야 합니다.')
+                return redirect(url_for('profile'))
+            db.execute('UPDATE user SET password_hash = ? WHERE id = ?',
+                       (generate_password_hash(new), g.user['id']))
+            db.commit()
+            flash('비밀번호가 변경되었습니다.')
+        return redirect(url_for('profile'))
+
+    my_products = db.execute(
+        'SELECT * FROM product WHERE seller_id = ? ORDER BY created_at DESC',
+        (g.user['id'],)).fetchall()
+    return render_template('profile.html', user=g.user, my_products=my_products)
+
+
+@app.route('/user/<user_id>')
+@login_required
+def view_user(user_id):
+    db = get_db()
+    target = db.execute('SELECT * FROM user WHERE id = ?', (user_id,)).fetchone()
+    if target is None:
+        abort(404)
+    products = db.execute(
+        'SELECT * FROM product WHERE seller_id = ? AND is_blocked = 0 '
+        'ORDER BY created_at DESC', (user_id,)).fetchall()
+    return render_template('user_view.html', target=target, products=products)
+
+
 # ===== FEATURE ROUTES INSERTED BELOW =====
 
 

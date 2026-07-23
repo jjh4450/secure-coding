@@ -11,6 +11,7 @@
     <a class="brand" href="{{ url_for('index') }}">Tiny Market</a>
     {% if g.user %}
       <a href="{{ url_for('dashboard') }}">상품</a>
+      <a href="{{ url_for('profile') }}">마이페이지</a>
       {% block nav_authed %}{% endblock %}
       <span class="spacer"></span>
       <span class="whoami">{{ g.user['username'] }}</span>
