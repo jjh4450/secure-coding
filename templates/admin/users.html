@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}사용자 관리{% endblock %}
+{% block content %}
+  <h2>사용자 관리</h2>
+  <p class="muted"><a href="{{ url_for('admin_home') }}">← 관리자 대시보드</a></p>
+  <table>
+    <thead>
+      <tr><th>사용자명</th><th>포인트</th><th>상태</th><th>가입일</th><th>관리</th></tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+        <tr>
+          <td>
+            {{ u['username'] }}
+            {% if u['is_admin'] %}<span class="badge admin">관리자</span>{% endif %}
+          </td>
+          <td>{{ '{:,}'.format(u['balance']) }}P</td>
+          <td>
+            {% if u['is_dormant'] %}<span class="badge dormant">휴면</span>{% else %}활성{% endif %}
+          </td>
+          <td class="muted">{{ u['created_at'] }}</td>
+          <td>
+            {% if not u['is_admin'] %}
+              <div class="btn-row">
+                <form class="inline" method="post" action="{{ url_for('admin_toggle_dormant', user_id=u['id']) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-secondary">{{ '휴면 해제' if u['is_dormant'] else '휴면 처리' }}</button>
+                </form>
+                <form class="inline" method="post" action="{{ url_for('admin_delete_user', user_id=u['id']) }}"
+                      onsubmit="return confirm('이 사용자를 삭제하시겠습니까?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-danger">삭제</button>
+                </form>
+              </div>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

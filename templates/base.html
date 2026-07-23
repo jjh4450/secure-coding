@@ -15,6 +15,7 @@
       <a href="{{ url_for('chat_list') }}">1:1 채팅</a>
       <a href="{{ url_for('wallet') }}">지갑</a>
       <a href="{{ url_for('profile') }}">마이페이지</a>
+      {% if g.user['is_admin'] %}<a href="{{ url_for('admin_home') }}" class="admin-link">관리자</a>{% endif %}
       {% block nav_authed %}{% endblock %}
       <span class="spacer"></span>
       <span class="whoami">{{ g.user['username'] }}</span>

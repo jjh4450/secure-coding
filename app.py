@@ -766,6 +766,129 @@ def transfer():
     return redirect(url_for('wallet'))
 
 
+# ---------------------------------------------------------------------------
+# 관리자
+# ---------------------------------------------------------------------------
+@app.route('/admin')
+@admin_required
+def admin_home():
+    db = get_db()
+    stats = {
+        'users': db.execute('SELECT COUNT(*) AS c FROM user').fetchone()['c'],
+        'products': db.execute('SELECT COUNT(*) AS c FROM product').fetchone()['c'],
+        'reports': db.execute("SELECT COUNT(*) AS c FROM report WHERE status = 'pending'").fetchone()['c'],
+    }
+    return render_template('admin/home.html', stats=stats)
+
+
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    users = get_db().execute('SELECT * FROM user ORDER BY created_at DESC').fetchall()
+    return render_template('admin/users.html', users=users)
+
+
+@app.route('/admin/users/<user_id>/dormant', methods=['POST'])
+@admin_required
+def admin_toggle_dormant(user_id):
+    db = get_db()
+    target = db.execute('SELECT * FROM user WHERE id = ?', (user_id,)).fetchone()
+    if target is None:
+        abort(404)
+    if target['is_admin']:
+        flash('관리자 계정은 휴면 처리할 수 없습니다.')
+        return redirect(url_for('admin_users'))
+    db.execute('UPDATE user SET is_dormant = 1 - is_dormant WHERE id = ?', (user_id,))
+    db.commit()
+    flash(f"'{target['username']}' 휴면 상태를 변경했습니다.")
+    return redirect(url_for('admin_users'))
+
+
+@app.route('/admin/users/<user_id>/delete', methods=['POST'])
+@admin_required
+def admin_delete_user(user_id):
+    db = get_db()
+    target = db.execute('SELECT * FROM user WHERE id = ?', (user_id,)).fetchone()
+    if target is None:
+        abort(404)
+    if target['is_admin']:
+        flash('관리자 계정은 삭제할 수 없습니다.')
+        return redirect(url_for('admin_users'))
+    # 연관 데이터 정리
+    db.execute('DELETE FROM message WHERE sender_id = ? OR receiver_id = ?', (user_id, user_id))
+    db.execute('DELETE FROM transfer WHERE sender_id = ? OR receiver_id = ?', (user_id, user_id))
+    db.execute('DELETE FROM report WHERE reporter_id = ?', (user_id,))
+    db.execute('DELETE FROM product WHERE seller_id = ?', (user_id,))
+    db.execute('DELETE FROM user WHERE id = ?', (user_id,))
+    db.commit()
+    flash(f"'{target['username']}' 계정을 삭제했습니다.")
+    return redirect(url_for('admin_users'))
+
+
+@app.route('/admin/products')
+@admin_required
+def admin_products():
+    products = get_db().execute(
+        'SELECT p.*, u.username AS seller_name FROM product p '
+        'JOIN user u ON u.id = p.seller_id ORDER BY p.created_at DESC').fetchall()
+    return render_template('admin/products.html', products=products)
+
+
+@app.route('/admin/products/<product_id>/block', methods=['POST'])
+@admin_required
+def admin_toggle_block(product_id):
+    db = get_db()
+    if db.execute('SELECT 1 FROM product WHERE id = ?', (product_id,)).fetchone() is None:
+        abort(404)
+    db.execute('UPDATE product SET is_blocked = 1 - is_blocked WHERE id = ?', (product_id,))
+    db.commit()
+    flash('상품 차단 상태를 변경했습니다.')
+    return redirect(url_for('admin_products'))
+
+
+@app.route('/admin/products/<product_id>/delete', methods=['POST'])
+@admin_required
+def admin_delete_product(product_id):
+    db = get_db()
+    if db.execute('SELECT 1 FROM product WHERE id = ?', (product_id,)).fetchone() is None:
+        abort(404)
+    db.execute('DELETE FROM product WHERE id = ?', (product_id,))
+    db.commit()
+    flash('상품을 삭제했습니다.')
+    return redirect(url_for('admin_products'))
+
+
+@app.route('/admin/reports')
+@admin_required
+def admin_reports():
+    db = get_db()
+    reports = db.execute(
+        'SELECT r.*, u.username AS reporter_name FROM report r '
+        'JOIN user u ON u.id = r.reporter_id ORDER BY r.created_at DESC').fetchall()
+    detailed = []
+    for r in reports:
+        if r['target_type'] == 'product':
+            t = db.execute('SELECT title AS label FROM product WHERE id = ?',
+                           (r['target_id'],)).fetchone()
+        else:
+            t = db.execute('SELECT username AS label FROM user WHERE id = ?',
+                           (r['target_id'],)).fetchone()
+        detailed.append((r, t['label'] if t else '(삭제됨)'))
+    return render_template('admin/reports.html', reports=detailed)
+
+
+@app.route('/admin/reports/<report_id>/resolve', methods=['POST'])
+@admin_required
+def admin_resolve_report(report_id):
+    db = get_db()
+    if db.execute('SELECT 1 FROM report WHERE id = ?', (report_id,)).fetchone() is None:
+        abort(404)
+    db.execute("UPDATE report SET status = 'resolved' WHERE id = ?", (report_id,))
+    db.commit()
+    flash('신고를 처리 완료로 표시했습니다.')
+    return redirect(url_for('admin_reports'))
+
+
 # ===== FEATURE ROUTES INSERTED BELOW =====
 
 
