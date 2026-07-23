@@ -2,97 +2,24 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>{% block title %}My Market{% endblock %}</title>
-  <!-- Socket.IO 클라이언트 라이브러리 -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-  <style>
-    /* Notion 스타일 미니멀 디자인 */
-    body {
-      background-color: #F7F7F7;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      color: #333;
-    }
-    nav {
-      background-color: #fff;
-      padding: 20px;
-      border-bottom: 1px solid #e0e0e0;
-    }
-    nav a {
-      text-decoration: none;
-      color: #555;
-      margin-right: 15px;
-      font-weight: 500;
-    }
-    .container {
-      max-width: 800px;
-      margin: 40px auto;
-      background-color: #fff;
-      padding: 40px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-      border-radius: 8px;
-    }
-    h1, h2, h3 {
-      font-weight: 600;
-      margin-bottom: 20px;
-    }
-    input, textarea, button {
-      width: 100%;
-      padding: 10px;
-      margin-bottom: 20px;
-      border: 1px solid #e0e0e0;
-      border-radius: 4px;
-      font-size: 16px;
-    }
-    button {
-      background-color: #007AFF;
-      color: #fff;
-      border: none;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-    button:hover {
-      background-color: #005BB5;
-    }
-    ul {
-      list-style: none;
-      padding: 0;
-    }
-    li {
-      padding: 10px;
-      border-bottom: 1px solid #e0e0e0;
-    }
-    .flash {
-      background-color: #FFECB3;
-      padding: 10px;
-      border: 1px solid #FFB74D;
-      border-radius: 4px;
-      margin-bottom: 20px;
-    }
-    /* 채팅 영역 스타일 */
-    #chat {
-      margin-top: 40px;
-    }
-    #messages {
-      height: 200px;
-      overflow-y: auto;
-      border: 1px solid #e0e0e0;
-      padding: 10px;
-      border-radius: 4px;
-      margin-bottom: 10px;
-      background-color: #fafafa;
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Tiny Market{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
   <nav>
-    {% if session.get('user_id') %}
-      <a href="{{ url_for('dashboard') }}">대시보드</a>
-      <a href="{{ url_for('profile') }}">프로필</a>
-      <a href="{{ url_for('report') }}">신고하기</a>
-      <a href="{{ url_for('logout') }}">로그아웃</a>
+    <a class="brand" href="{{ url_for('index') }}">Tiny Market</a>
+    {% if g.user %}
+      <a href="{{ url_for('dashboard') }}">상품</a>
+      {% block nav_authed %}{% endblock %}
+      <span class="spacer"></span>
+      <span class="whoami">{{ g.user['username'] }}</span>
+      <form class="inline" method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="linklike">로그아웃</button>
+      </form>
     {% else %}
+      <span class="spacer"></span>
       <a href="{{ url_for('login') }}">로그인</a>
       <a href="{{ url_for('register') }}">회원가입</a>
     {% endif %}
@@ -100,7 +27,7 @@
   <div class="container">
     {% with messages = get_flashed_messages() %}
       {% if messages %}
-        <ul>
+        <ul class="flash-list">
           {% for message in messages %}
             <li class="flash">{{ message }}</li>
           {% endfor %}
@@ -109,5 +36,6 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </div>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

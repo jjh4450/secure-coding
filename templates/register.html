@@ -1,10 +1,16 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
 {% block title %}회원가입{% endblock %}
 {% block content %}
-<h2>회원가입</h2>
-<form method="post">
-  사용자명: <input type="text" name="username" required><br>
-  비밀번호: <input type="password" name="password" required><br>
-  <button type="submit">회원가입</button>
-</form>
+  <h2>회원가입</h2>
+  <form method="post" action="{{ url_for('register') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="username">사용자명 <span class="muted">(영문/숫자/_ 4~20자)</span></label>
+    <input id="username" type="text" name="username" autocomplete="username" required>
+    <label for="password">비밀번호 <span class="muted">(8~72자, 영문+숫자 포함)</span></label>
+    <input id="password" type="password" name="password" autocomplete="new-password" required>
+    <label for="password2">비밀번호 확인</label>
+    <input id="password2" type="password" name="password2" autocomplete="new-password" required>
+    <button type="submit">회원가입</button>
+  </form>
+  <p class="muted">이미 계정이 있으신가요? <a href="{{ url_for('login') }}">로그인</a></p>
 {% endblock %}

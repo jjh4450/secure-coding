@@ -1,0 +1,138 @@
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --line: #e3e6ea;
+  --text: #1f2328;
+  --muted: #6b7280;
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --danger: #dc2626;
+  --ok: #16a34a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Malgun Gothic", sans-serif;
+  margin: 0;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+nav {
+  background: var(--card);
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+nav .brand { font-weight: 700; font-size: 18px; color: var(--text); }
+nav a { text-decoration: none; color: var(--muted); font-weight: 500; }
+nav a:hover { color: var(--text); }
+nav .spacer { flex: 1; }
+nav .whoami { color: var(--muted); font-size: 14px; }
+nav .admin-link { color: var(--danger); }
+nav form.inline { margin: 0; display: inline; }
+
+.container {
+  max-width: 860px;
+  margin: 32px auto;
+  background: var(--card);
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+h1, h2, h3 { font-weight: 650; margin: 0 0 16px; }
+
+label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+
+input, textarea, select {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 15px;
+  font-family: inherit;
+}
+textarea { min-height: 120px; resize: vertical; }
+
+button, .btn {
+  display: inline-block;
+  padding: 10px 16px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background .15s;
+}
+button:hover, .btn:hover { background: var(--primary-dark); }
+.btn-secondary { background: #eef1f5; color: var(--text); }
+.btn-secondary:hover { background: #e0e4ea; }
+.btn-danger { background: var(--danger); }
+.btn-danger:hover { background: #b91c1c; }
+.linklike { background: none; color: var(--muted); padding: 0; width: auto; font-weight: 500; }
+.linklike:hover { background: none; color: var(--text); text-decoration: underline; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+ul { list-style: none; padding: 0; margin: 0; }
+
+.flash-list { margin-bottom: 20px; }
+.flash {
+  background: #fff7ed;
+  padding: 10px 14px;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.product-list li, .list li {
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.product-list a { text-decoration: none; color: var(--text); font-weight: 500; }
+.price { color: var(--primary); font-weight: 600; }
+.muted { color: var(--muted); font-size: 14px; }
+.badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #eef1f5; color: var(--muted); }
+.badge.blocked { background: #fee2e2; color: var(--danger); }
+.badge.dormant { background: #fef3c7; color: #b45309; }
+.badge.admin { background: #ede9fe; color: #6d28d9; }
+
+.search-bar { display: flex; gap: 8px; margin-bottom: 20px; }
+.search-bar input { margin-bottom: 0; }
+.search-bar button { flex-shrink: 0; }
+
+img.product-img { max-width: 100%; border-radius: 8px; border: 1px solid var(--line); margin: 12px 0; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; }
+
+/* 채팅 */
+#messages, .dm-messages {
+  height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  background: #fafbfc;
+}
+.msg { padding: 4px 0; }
+.msg .who { font-weight: 600; margin-right: 6px; }
+.chat-form { display: flex; gap: 8px; }
+.chat-form input { margin-bottom: 0; }
+
+.error-page { text-align: center; padding: 40px 0; }
+.error-page .code { font-size: 56px; font-weight: 700; color: var(--primary); }
