@@ -443,6 +443,135 @@ def view_user(user_id):
     return render_template('user_view.html', target=target, products=products)
 
 
+# ---------------------------------------------------------------------------
+# 상품
+# ---------------------------------------------------------------------------
+ALLOWED_IMAGE = {
+    'png': b'\x89PNG\r\n\x1a\n',
+    'jpg': b'\xff\xd8\xff',
+    'jpeg': b'\xff\xd8\xff',
+    'gif': b'GIF8',
+    'webp': None,  # RIFF....WEBP — 별도 검사
+}
+
+
+def save_image(file):
+    """이미지 업로드 검증: 확장자 화이트리스트 + 매직바이트 확인 + 랜덤 파일명.
+    반환값: (저장경로 또는 None, 오류메시지 또는 None)."""
+    if not file or not file.filename:
+        return None, None  # 이미지 미첨부는 허용
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    if ext not in ALLOWED_IMAGE:
+        return None, '허용되지 않는 이미지 형식입니다. (png/jpg/gif/webp)'
+    head = file.stream.read(16)
+    file.stream.seek(0)
+    if ext == 'webp':
+        ok = head[:4] == b'RIFF' and head[8:12] == b'WEBP'
+    else:
+        ok = head.startswith(ALLOWED_IMAGE[ext])
+    if not ok:
+        return None, '이미지 파일이 손상되었거나 형식이 올바르지 않습니다.'
+    filename = f'{uuid.uuid4().hex}.{ext}'  # 사용자 입력 파일명은 신뢰하지 않는다
+    file.save(os.path.join(app.config['UPLOAD_DIR'], filename))
+    return f'uploads/{filename}', None
+
+
+def get_product_or_404(product_id):
+    product = get_db().execute(
+        'SELECT * FROM product WHERE id = ?', (product_id,)).fetchone()
+    if product is None:
+        abort(404)
+    return product
+
+
+@app.route('/product/new', methods=['GET', 'POST'])
+@login_required
+def new_product():
+    if request.method == 'POST':
+        title = clean_text(request.form.get('title'), 100)
+        description = clean_text(request.form.get('description'), 2000)
+        price = parse_price(request.form.get('price'))
+        if title is None or description is None:
+            flash('상품명(100자 이내)과 설명(2000자 이내)을 입력해주세요.')
+            return redirect(url_for('new_product'))
+        if price is None:
+            flash('가격은 1 이상 1억 이하의 정수여야 합니다.')
+            return redirect(url_for('new_product'))
+        image_path, err = save_image(request.files.get('image'))
+        if err:
+            flash(err)
+            return redirect(url_for('new_product'))
+        db = get_db()
+        db.execute(
+            'INSERT INTO product (id, title, description, price, image_path, seller_id, created_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (str(uuid.uuid4()), title, description, price, image_path,
+             g.user['id'], now_str()))
+        db.commit()
+        flash('상품이 등록되었습니다.')
+        return redirect(url_for('dashboard'))
+    return render_template('new_product.html')
+
+
+@app.route('/product/<product_id>')
+@login_required
+def view_product(product_id):
+    product = get_product_or_404(product_id)
+    is_owner = product['seller_id'] == g.user['id']
+    if product['is_blocked'] and not (is_owner or g.user['is_admin']):
+        flash('신고 누적으로 차단된 상품입니다.')
+        return redirect(url_for('dashboard'))
+    seller = get_db().execute(
+        'SELECT id, username, bio, is_dormant FROM user WHERE id = ?',
+        (product['seller_id'],)).fetchone()
+    return render_template('view_product.html', product=product, seller=seller,
+                           is_owner=is_owner)
+
+
+@app.route('/product/<product_id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_product(product_id):
+    product = get_product_or_404(product_id)
+    # 소유자 검증: 본인 상품(또는 관리자)만 수정 가능 (IDOR 방지)
+    if product['seller_id'] != g.user['id'] and not g.user['is_admin']:
+        abort(403)
+    if request.method == 'POST':
+        title = clean_text(request.form.get('title'), 100)
+        description = clean_text(request.form.get('description'), 2000)
+        price = parse_price(request.form.get('price'))
+        if title is None or description is None or price is None:
+            flash('입력값을 확인해주세요.')
+            return redirect(url_for('edit_product', product_id=product_id))
+        image_path, err = save_image(request.files.get('image'))
+        if err:
+            flash(err)
+            return redirect(url_for('edit_product', product_id=product_id))
+        db = get_db()
+        if image_path:
+            db.execute('UPDATE product SET title=?, description=?, price=?, image_path=? WHERE id=?',
+                       (title, description, price, image_path, product_id))
+        else:
+            db.execute('UPDATE product SET title=?, description=?, price=? WHERE id=?',
+                       (title, description, price, product_id))
+        db.commit()
+        flash('상품이 수정되었습니다.')
+        return redirect(url_for('view_product', product_id=product_id))
+    return render_template('edit_product.html', product=product)
+
+
+@app.route('/product/<product_id>/delete', methods=['POST'])
+@login_required
+def delete_product(product_id):
+    product = get_product_or_404(product_id)
+    if product['seller_id'] != g.user['id'] and not g.user['is_admin']:
+        abort(403)
+    db = get_db()
+    db.execute('DELETE FROM product WHERE id = ?', (product_id,))
+    db.commit()
+    flash('상품이 삭제되었습니다.')
+    return redirect(url_for('dashboard'))
+
+
 # ===== FEATURE ROUTES INSERTED BELOW =====
 
 

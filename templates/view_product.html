@@ -1,8 +1,35 @@
-{% extends "base.html" %}
-{% block title %}상품 상세보기{% endblock %}
+{% extends 'base.html' %}
+{% block title %}{{ product['title'] }}{% endblock %}
 {% block content %}
-<h2>{{ product.title }}</h2>
-<p>{{ product.description }}</p>
-<p>가격: {{ product.price }}</p>
-<p>판매자: {{ seller.username if seller else '알 수 없음' }}</p>
+  <h2>
+    {{ product['title'] }}
+    {% if product['is_blocked'] %}<span class="badge blocked">차단됨</span>{% endif %}
+  </h2>
+  <p class="price" style="font-size:20px">{{ '{:,}'.format(product['price']) }}P</p>
+
+  {% if product['image_path'] %}
+    <img class="product-img" src="{{ url_for('static', filename=product['image_path']) }}" alt="상품 사진">
+  {% endif %}
+
+  <p>{{ product['description'] }}</p>
+
+  <p class="muted">
+    판매자:
+    {% if seller %}
+      <a href="{{ url_for('view_user', user_id=seller['id']) }}">{{ seller['username'] }}</a>
+    {% else %}알 수 없음{% endif %}
+  </p>
+
+  <div class="btn-row">
+    {% if is_owner %}
+      <a class="btn btn-secondary" href="{{ url_for('edit_product', product_id=product['id']) }}">수정</a>
+      <form class="inline" method="post" action="{{ url_for('delete_product', product_id=product['id']) }}"
+            onsubmit="return confirm('정말 삭제하시겠습니까?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-danger">삭제</button>
+      </form>
+    {% else %}
+      {% block product_actions %}{% endblock %}
+    {% endif %}
+  </div>
 {% endblock %}
