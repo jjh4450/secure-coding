@@ -1,0 +1,10 @@
+Flask>=3.0
+Flask-SocketIO>=5.3
+Flask-WTF>=1.2
+Flask-Limiter>=3.5
+Werkzeug>=3.0
+
+# 테스트
+pytest>=8.0
+
+# 개발 편의(선택): eventlet/gevent 없이도 동작하는 기본 async 모드 사용

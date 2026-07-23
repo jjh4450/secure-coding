@@ -1,3 +1,25 @@
+# Database
 *.db
+
+# Instance secrets (SECRET_KEY 등)
+instance/
+
+# Uploaded files
+static/uploads/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Report (git 추적 금지 — LMS 제출용 로컬 산출물)
+docs/
+
+# etc
 *.pptx
-__pycache__
