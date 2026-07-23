@@ -622,6 +622,78 @@ def chat_room(peer_id):
     return render_template('chat_room.html', peer=peer, messages=messages)
 
 
+# ---------------------------------------------------------------------------
+# 신고 + 자동 제재
+# ---------------------------------------------------------------------------
+def apply_sanctions(db, target_type, target_id):
+    """서로 다른 신고자 수가 임계치 이상이면 자동 제재(상품 차단/유저 휴면)."""
+    count = db.execute(
+        'SELECT COUNT(DISTINCT reporter_id) AS c FROM report '
+        'WHERE target_type = ? AND target_id = ?',
+        (target_type, target_id)).fetchone()['c']
+    if count < REPORT_THRESHOLD:
+        return
+    if target_type == 'product':
+        db.execute('UPDATE product SET is_blocked = 1 WHERE id = ?', (target_id,))
+    else:
+        # 관리자 계정은 휴면 대상에서 제외
+        db.execute('UPDATE user SET is_dormant = 1 WHERE id = ? AND is_admin = 0',
+                   (target_id,))
+
+
+@app.route('/report', methods=['GET', 'POST'])
+@login_required
+@limiter.limit('20 per hour', methods=['POST'])
+def report():
+    db = get_db()
+    if request.method == 'POST':
+        target_type = request.form.get('target_type')
+        target_id = (request.form.get('target_id') or '').strip()
+        reason = clean_text(request.form.get('reason'), 500)
+        if target_type not in ('user', 'product'):
+            flash('신고 대상 유형이 올바르지 않습니다.')
+            return redirect(url_for('report'))
+        if reason is None or len(reason) < 5:
+            flash('신고 사유를 5자 이상 500자 이내로 작성해주세요.')
+            return redirect(url_for('report'))
+        # 신고 대상 존재 검증 + 자기 자신/자기 상품 신고 차단
+        if target_type == 'product':
+            target = db.execute('SELECT id, seller_id FROM product WHERE id = ?',
+                                (target_id,)).fetchone()
+            if target and target['seller_id'] == g.user['id']:
+                flash('자신의 상품은 신고할 수 없습니다.')
+                return redirect(url_for('report'))
+        else:
+            target = db.execute('SELECT id FROM user WHERE id = ?',
+                                (target_id,)).fetchone()
+            if target and target['id'] == g.user['id']:
+                flash('자기 자신은 신고할 수 없습니다.')
+                return redirect(url_for('report'))
+        if target is None:
+            flash('신고 대상을 찾을 수 없습니다.')
+            return redirect(url_for('report'))
+        try:
+            db.execute(
+                'INSERT INTO report (id, reporter_id, target_type, target_id, reason, created_at) '
+                'VALUES (?, ?, ?, ?, ?, ?)',
+                (str(uuid.uuid4()), g.user['id'], target_type, target_id,
+                 reason, now_str()))
+        except sqlite3.IntegrityError:
+            flash('이미 신고한 대상입니다.')  # UNIQUE 제약 → 중복 신고 방지
+            return redirect(url_for('report'))
+        apply_sanctions(db, target_type, target_id)
+        db.commit()
+        flash('신고가 접수되었습니다.')
+        return redirect(url_for('dashboard'))
+
+    target_type = request.args.get('type', 'product')
+    if target_type not in ('user', 'product'):
+        target_type = 'product'
+    return render_template('report.html',
+                           target_type=target_type,
+                           target_id=request.args.get('target', ''))
+
+
 # ===== FEATURE ROUTES INSERTED BELOW =====
 
 

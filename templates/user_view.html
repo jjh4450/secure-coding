@@ -11,6 +11,7 @@
   {% if g.user['id'] != target['id'] %}
     <div class="btn-row">
       <a class="btn" href="{{ url_for('chat_room', peer_id=target['id']) }}">1:1 채팅</a>
+      <a class="btn btn-secondary" href="{{ url_for('report', type='user', target=target['id']) }}">신고</a>
       {% block user_actions %}{% endblock %}
     </div>
   {% endif %}
