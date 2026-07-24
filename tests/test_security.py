@@ -108,7 +108,7 @@ def test_blocked_product_detail_redirects_for_others(client, app_module):
     client.post('/logout')
     signup_and_login(client, 'buyer01', PW)
     resp = client.get(f'/product/{pid}', follow_redirects=True)
-    assert '차단된 상품' in resp.get_data(as_text=True)
+    assert '조회할 수 없는 상품' in resp.get_data(as_text=True)
 
 
 def test_dormant_seller_products_hidden(client, app_module):

@@ -45,7 +45,8 @@ def test_admin_toggle_dormant(client, app_module):
     register(client, 'alice01', PW)
     alice_id = uid(app_module, 'alice01')
     login_admin(client)
-    client.post(f'/admin/users/{alice_id}/dormant', follow_redirects=True)
+    client.post(f'/admin/users/{alice_id}/dormant', data={'state': '1'},
+                follow_redirects=True)
     with app_module.app.app_context():
         row = app_module.get_db().execute(
             'SELECT is_dormant FROM user WHERE id = ?', (alice_id,)).fetchone()
@@ -81,7 +82,8 @@ def test_admin_toggle_product_block(client, app_module):
         pid = app_module.get_db().execute('SELECT id FROM product').fetchone()['id']
     client.post('/logout')
     login_admin(client)
-    client.post(f'/admin/products/{pid}/block', follow_redirects=True)
+    client.post(f'/admin/products/{pid}/block', data={'state': '1'},
+                follow_redirects=True)
     with app_module.app.app_context():
         row = app_module.get_db().execute(
             'SELECT is_blocked FROM product WHERE id = ?', (pid,)).fetchone()

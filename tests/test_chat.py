@@ -39,13 +39,27 @@ def test_global_chat_broadcast_uses_server_username(client, app_module):
     sio.disconnect()
 
 
-def test_global_chat_ignores_unauthenticated(client, app_module):
-    # 로그인하지 않은 소켓 연결의 메시지는 브로드캐스트되지 않는다
+def test_unauthenticated_socket_rejected(client, app_module):
+    # 미인증 소켓은 connect 단계에서 거부된다
     sio = app_module.socketio.test_client(app_module.app, flask_test_client=client)
-    sio.emit('send_message', {'message': '침입 시도'})
-    received = [r for r in sio.get_received() if r['name'] == 'message']
-    assert received == []
-    sio.disconnect()
+    assert not sio.is_connected()
+
+
+def test_unauthenticated_socket_cannot_receive_broadcast(client, app_module):
+    # 인증 사용자가 보낸 전체 채팅을 익명 소켓이 수신하지 못한다
+    # (연결 자체가 거부되므로 발신·수신 모두 차단됨)
+    anon = app_module.socketio.test_client(app_module.app, flask_test_client=client)
+    # 연결이 거부되므로 수신 채널 자체가 열리지 않는다
+    assert not anon.is_connected()
+
+    # 대조: 인증 사용자는 정상 연결되어 자신의 브로드캐스트를 수신한다
+    from conftest import signup_and_login
+    signup_and_login(client, 'sender01', 'Password123')
+    authed = app_module.socketio.test_client(app_module.app, flask_test_client=client)
+    assert authed.is_connected()
+    authed.emit('send_message', {'message': '인증 사용자 메시지'})
+    assert any(r['name'] == 'message' for r in authed.get_received())
+    authed.disconnect()
 
 
 def test_global_chat_rate_limited(client, app_module):
@@ -93,11 +107,11 @@ def test_dm_saved_and_delivered(client, app_module):
 
 def test_dm_unauthenticated_ignored(client, app_module):
     register(client, 'bob01', 'Password123')
-    bob_id = _uid(app_module, 'bob01')
+    _uid(app_module, 'bob01')
+    # 미인증 연결은 거부되므로 send_dm 자체가 불가하고 DB에도 저장되지 않는다
     sio = app_module.socketio.test_client(app_module.app, flask_test_client=client)
-    sio.emit('send_dm', {'peer_id': bob_id, 'message': '무단 메시지'})
+    assert not sio.is_connected()
     with app_module.app.app_context():
         row = app_module.get_db().execute(
             'SELECT * FROM message WHERE content = ?', ('무단 메시지',)).fetchone()
     assert row is None
-    sio.disconnect()

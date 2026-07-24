@@ -16,6 +16,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.exceptions import RequestEntityTooLarge
+from urllib.parse import urlparse
 
 # ---------------------------------------------------------------------------
 # 경로/설정 (테스트를 위해 환경변수로 오버라이드 가능)
@@ -273,16 +274,26 @@ def server_error(e):
     return render_template('error.html', code=500, message='서버 오류가 발생했습니다.'), 500
 
 
+def safe_back(default_endpoint='index'):
+    """referrer가 같은 출처일 때만 사용(오픈 리다이렉트 방지). 아니면 내부 경로로."""
+    ref = request.referrer
+    if ref:
+        host = urlparse(request.host_url).netloc
+        if urlparse(ref).netloc == host:
+            return ref
+    return url_for(default_endpoint)
+
+
 @app.errorhandler(CSRFError)
 def csrf_error(e):
     flash('보안 토큰이 유효하지 않습니다. 다시 시도해주세요.')
-    return redirect(request.referrer or url_for('index'))
+    return redirect(safe_back())
 
 
 @app.errorhandler(RequestEntityTooLarge)
 def too_large(e):
     flash('업로드 파일이 너무 큽니다. (최대 2MB)')
-    return redirect(request.referrer or url_for('index'))
+    return redirect(safe_back())
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +344,19 @@ def login():
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
         password = request.form.get('password') or ''
+
+        # 사용자명 길이 제한: 실패 추적 딕셔너리를 이용한 메모리 고갈(DoS) 방지.
+        # 실제 계정 사용자명은 최대 20자이므로 초과 값은 즉시 인증 실패 처리.
+        if len(username) > 20:
+            flash('아이디 또는 비밀번호가 올바르지 않습니다.')
+            return redirect(url_for('login'))
+        # 딕셔너리 크기 상한: 만료된 항목 정리 후에도 넘치면 초기화
+        if len(_login_failures) > 5000:
+            now = time.time()
+            for k in [k for k, (_, lu) in list(_login_failures.items()) if lu < now]:
+                _login_failures.pop(k, None)
+            if len(_login_failures) > 5000:
+                _login_failures.clear()
 
         # 계정 단위 잠금: 5회 연속 실패 시 5분 잠금 (브루트포스 방어)
         fails, locked_until = _login_failures.get(username, (0, 0))
@@ -438,9 +462,13 @@ def view_user(user_id):
     target = db.execute('SELECT * FROM user WHERE id = ?', (user_id,)).fetchone()
     if target is None:
         abort(404)
-    products = db.execute(
-        'SELECT * FROM product WHERE seller_id = ? AND is_blocked = 0 '
-        'ORDER BY created_at DESC', (user_id,)).fetchall()
+    # 휴면 대상의 상품은 본인/관리자에게만 노출(대시보드 정책과 일관)
+    if target['is_dormant'] and not (g.user['is_admin'] or g.user['id'] == target['id']):
+        products = []
+    else:
+        products = db.execute(
+            'SELECT * FROM product WHERE seller_id = ? AND is_blocked = 0 '
+            'ORDER BY created_at DESC', (user_id,)).fetchall()
     return render_template('user_view.html', target=target, products=products)
 
 
@@ -519,12 +547,14 @@ def new_product():
 def view_product(product_id):
     product = get_product_or_404(product_id)
     is_owner = product['seller_id'] == g.user['id']
-    if product['is_blocked'] and not (is_owner or g.user['is_admin']):
-        flash('신고 누적으로 차단된 상품입니다.')
-        return redirect(url_for('dashboard'))
+    privileged = is_owner or g.user['is_admin']
     seller = get_db().execute(
         'SELECT id, username, bio, is_dormant FROM user WHERE id = ?',
         (product['seller_id'],)).fetchone()
+    # 차단 상품 또는 휴면 판매자의 상품은 소유자/관리자 외에는 접근 불가
+    if not privileged and (product['is_blocked'] or (seller and seller['is_dormant'])):
+        flash('현재 조회할 수 없는 상품입니다.')
+        return redirect(url_for('dashboard'))
     return render_template('view_product.html', product=product, seller=seller,
                            is_owner=is_owner)
 
@@ -615,11 +645,13 @@ def chat_room(peer_id):
     if peer is None or peer['id'] == g.user['id']:
         abort(404)
     room = dm_room_id(g.user['id'], peer_id)
-    messages = db.execute(
+    # 최신 200개를 선택(DESC)한 뒤 화면 표시를 위해 다시 오름차순으로 뒤집는다.
+    recent = db.execute(
         'SELECT m.*, u.username AS sender_name FROM message m '
         'JOIN user u ON u.id = m.sender_id '
-        'WHERE m.room_id = ? ORDER BY m.created_at ASC LIMIT 200',
+        'WHERE m.room_id = ? ORDER BY m.created_at DESC, m.id DESC LIMIT 200',
         (room,)).fetchall()
+    messages = list(reversed(recent))
     return render_template('chat_room.html', peer=peer, messages=messages)
 
 
@@ -744,16 +776,24 @@ def transfer():
         return redirect(url_for('wallet'))
 
     try:
-        # 잔액 검증을 UPDATE 조건에 포함해 원자적으로 처리(경쟁 조건 방지)
+        # 잔액·휴면 검증을 UPDATE 조건에 포함해 원자적으로 처리(경쟁 조건/TOCTOU 방지).
+        # 요청 처리 중 관리자가 발신자를 휴면 처리하면 is_dormant=0 조건에서 걸러진다.
         cur = db.execute(
-            'UPDATE user SET balance = balance - ? WHERE id = ? AND balance >= ?',
+            'UPDATE user SET balance = balance - ? '
+            'WHERE id = ? AND balance >= ? AND is_dormant = 0',
             (amount, g.user['id'], amount))
         if cur.rowcount == 0:
             db.rollback()
-            flash('잔액이 부족합니다.')
+            flash('잔액이 부족하거나 송금할 수 없는 상태입니다.')
             return redirect(url_for('wallet'))
-        db.execute('UPDATE user SET balance = balance + ? WHERE id = ?',
-                   (amount, receiver['id']))
+        # 수취인도 활성 상태일 때만 입금(도중 휴면 전환 시 롤백)
+        rcur = db.execute(
+            'UPDATE user SET balance = balance + ? WHERE id = ? AND is_dormant = 0',
+            (amount, receiver['id']))
+        if rcur.rowcount == 0:
+            db.rollback()
+            flash('받는 사람이 송금을 받을 수 없는 상태입니다.')
+            return redirect(url_for('wallet'))
         db.execute(
             'INSERT INTO transfer (id, sender_id, receiver_id, amount, created_at) '
             'VALUES (?, ?, ?, ?, ?)',
@@ -799,9 +839,11 @@ def admin_toggle_dormant(user_id):
     if target['is_admin']:
         flash('관리자 계정은 휴면 처리할 수 없습니다.')
         return redirect(url_for('admin_users'))
-    db.execute('UPDATE user SET is_dormant = 1 - is_dormant WHERE id = ?', (user_id,))
+    # 멱등 처리: 폼이 원하는 최종 상태를 명시(중복 요청에도 결과 동일)
+    state = 1 if request.form.get('state') == '1' else 0
+    db.execute('UPDATE user SET is_dormant = ? WHERE id = ?', (state, user_id))
     db.commit()
-    flash(f"'{target['username']}' 휴면 상태를 변경했습니다.")
+    flash(f"'{target['username']}' 계정을 {'휴면 처리' if state else '활성화'}했습니다.")
     return redirect(url_for('admin_users'))
 
 
@@ -841,9 +883,11 @@ def admin_toggle_block(product_id):
     db = get_db()
     if db.execute('SELECT 1 FROM product WHERE id = ?', (product_id,)).fetchone() is None:
         abort(404)
-    db.execute('UPDATE product SET is_blocked = 1 - is_blocked WHERE id = ?', (product_id,))
+    # 멱등 처리: 폼이 원하는 최종 상태를 명시(중복 요청에도 결과 동일)
+    state = 1 if request.form.get('state') == '1' else 0
+    db.execute('UPDATE product SET is_blocked = ? WHERE id = ?', (state, product_id))
     db.commit()
-    flash('상품 차단 상태를 변경했습니다.')
+    flash('상품을 ' + ('차단' if state else '차단 해제') + '했습니다.')
     return redirect(url_for('admin_products'))
 
 
@@ -913,6 +957,14 @@ def chat_rate_limited(user_id):
         return True
     _last_chat_at[user_id] = now
     return False
+
+
+@socketio.on('connect')
+def handle_connect():
+    # 미인증 연결은 거부한다. 이렇게 하면 익명 소켓이 broadcast 메시지를
+    # 수신하는 것도 원천 차단된다(발신 차단만으로는 수신을 막지 못함).
+    if socket_user() is None:
+        return False
 
 
 @socketio.on('send_message')

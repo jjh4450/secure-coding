@@ -24,10 +24,11 @@
               <div class="btn-row">
                 <form class="inline" method="post" action="{{ url_for('admin_toggle_dormant', user_id=u['id']) }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="state" value="{{ 0 if u['is_dormant'] else 1 }}">
                   <button type="submit" class="btn btn-secondary">{{ '휴면 해제' if u['is_dormant'] else '휴면 처리' }}</button>
                 </form>
                 <form class="inline" method="post" action="{{ url_for('admin_delete_user', user_id=u['id']) }}"
-                      onsubmit="return confirm('이 사용자를 삭제하시겠습니까?');">
+                      data-confirm="이 사용자를 삭제하시겠습니까?">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button type="submit" class="btn btn-danger">삭제</button>
                 </form>
